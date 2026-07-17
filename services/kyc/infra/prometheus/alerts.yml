@@ -1,0 +1,29 @@
+groups:
+  - name: kyc-alerts
+    interval: 30s
+    rules:
+      - alert: KYCPassRateLow
+        expr: |
+          rate(kyc_completed_total{status="approved"}[5m]) /
+          rate(kyc_completed_total[5m]) < 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "KYC pass rate < 50% depuis 5min"
+
+      - alert: KYCProviderDown
+        expr: kyc_provider_circuit_state == 2
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Circuit breaker ouvert — provider {{ $labels.provider }}"
+
+      - alert: KYCDLQHigh
+        expr: kyc_dlq_size > 50
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "DLQ > 50 entrées — providers peut-être down"

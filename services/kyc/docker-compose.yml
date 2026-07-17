@@ -1,0 +1,180 @@
+version: "3.9"
+
+networks:
+  kyc-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  minio_data:
+  prometheus_data:
+  grafana_data:
+
+services:
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: kyc-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       kyc_db
+      POSTGRES_USER:     kyc_user
+      POSTGRES_PASSWORD: kyc_secret
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - kyc-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kyc_user -d kyc_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: kyc-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    networks:
+      - kyc-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: kyc-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER:     minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    networks:
+      - kyc-net
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  kyc-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kyc-service
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    environment:
+      PORT: "8081"
+      ENV:  development
+      SERVICE_VERSION: "1.0.0"
+
+      POSTGRES_URL: postgres://kyc_user:kyc_secret@postgres:5432/kyc_db?sslmode=disable
+
+      REDIS_URL: redis:6379
+
+      STORAGE_PROVIDER: minio
+      MINIO_ENDPOINT:   minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      MINIO_BUCKET:     kyc-documents
+      MINIO_USE_SSL:    "false"
+
+      SMILEID_SANDBOX:   "true"
+      YOUVERIFY_SANDBOX: "true"
+      SUMSUB_SANDBOX:    "true"
+
+      AML_PROVIDER:    local
+      AML_THRESHOLD:   "0.70"
+
+      PROVIDER_RETRY_MAX:            "3"
+      PROVIDER_RETRY_BASE_DELAY:     "500ms"
+      PROVIDER_RETRY_MAX_DELAY:      "10s"
+      CB_MAX_FAILURES:               "5"
+      CB_TIMEOUT:                    "30s"
+      CB_MAX_REQUESTS_HALF_OPEN:     "2"
+
+      TRACING_ENABLED:               "false"
+      OTEL_EXPORTER_OTLP_ENDPOINT:   jaeger:4317
+
+    ports:
+      - "8081:8081"
+    networks:
+      - kyc-net
+    healthcheck:
+      test: ["CMD-SHELL",
+             "wget -qO- http://localhost:8081/health/ready || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: kyc-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    ports:
+      - "9090:9090"
+    networks:
+      - kyc-net
+    depends_on:
+      - kyc-service
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: kyc-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER:     admin
+      GF_SECURITY_ADMIN_PASSWORD: datakeys2025
+      GF_USERS_ALLOW_SIGN_UP:     "false"
+      GF_SERVER_ROOT_URL:         http://localhost:3000
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infra/grafana/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./infra/grafana/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    networks:
+      - kyc-net
+    depends_on:
+      - prometheus
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: kyc-jaeger
+    restart: unless-stopped
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+    networks:
+      - kyc-net

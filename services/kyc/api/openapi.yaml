@@ -1,0 +1,258 @@
+openapi: "3.1.0"
+info:
+  title: DATAKEYS KYC API
+  version: "1.0.0"
+  description: |
+    API de vérification d'identité panafricaine.
+    Couvre 55 pays africains avec routing intelligent
+    multi-provider (SmileID, Youverify, SumSub).
+  contact:
+    name: DATAKEYS Technologies
+    email: api@datakeys.africa
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.datakeys.africa/v1
+    description: Production
+  - url: http://localhost:8081/v1
+    description: Local development
+
+security:
+  - ApiKeyAuth: []
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  schemas:
+    InitiateKYCRequest:
+      type: object
+      required: [phone, country_code, doc_type, consent, full_name]
+      properties:
+        phone:
+          type: string
+          pattern: '^\+[1-9]\d{1,14}$'
+          example: "+22670000000"
+        country_code:
+          type: string
+          minLength: 2
+          maxLength: 2
+          example: "BF"
+        doc_type:
+          type: string
+          enum: [NATIONAL_ID, PASSPORT, DRIVERS_LICENSE, VOTER_CARD, RESIDENCE_PERMIT]
+          example: "NATIONAL_ID"
+        doc_number:
+          type: string
+          example: "B1234567"
+        full_name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          example: "Amadou Ouédraogo"
+        consent:
+          type: boolean
+          description: Consentement BCEAO obligatoire
+        callback_url:
+          type: string
+          format: uri
+        language:
+          type: string
+          enum: [fr, en, ar, sw, ha]
+          default: fr
+
+    InitiateKYCResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        data:
+          type: object
+          properties:
+            verification_id:
+              type: string
+              format: uuid
+            status:
+              type: string
+              enum: [pending, rejected]
+            upload_url:
+              type: string
+              description: URL présignée MinIO pour upload du document
+            expires_in:
+              type: integer
+              description: Secondes avant expiration (3600)
+            provider:
+              type: string
+            message:
+              type: string
+
+    VerificationResult:
+      type: object
+      properties:
+        verification_id:
+          type: string
+          format: uuid
+        phone:
+          type: string
+        country_code:
+          type: string
+        doc_type:
+          type: string
+        status:
+          type: string
+          enum: [pending, processing, approved, rejected, manual_review, expired]
+        score:
+          type: number
+          minimum: 0
+          maximum: 1
+        provider:
+          type: string
+        flags:
+          type: array
+          items:
+            type: string
+        aml_score:
+          type: number
+        is_sanctioned:
+          type: boolean
+        is_pep:
+          type: boolean
+        processed_at:
+          type: string
+          format: date-time
+
+    Country:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+        phone_prefix:
+          type: string
+        region:
+          type: string
+        doc_types:
+          type: array
+          items:
+            type: object
+        provider:
+          type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+          example: "KYC_AUTH_001: API key manquante"
+        timestamp:
+          type: string
+          format: date-time
+
+paths:
+  /kyc/initiate:
+    post:
+      summary: Initier une vérification KYC
+      operationId: initiateKYC
+      tags: [KYC]
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          schema:
+            type: string
+            format: uuid
+          description: Clé UUID pour éviter les doublons
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InitiateKYCRequest'
+      responses:
+        "201":
+          description: Vérification initiée
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InitiateKYCResponse'
+        "401":
+          description: API key manquante ou invalide
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        "409":
+          description: Idempotency-Key déjà en cours de traitement
+        "422":
+          description: Données invalides
+
+  /kyc/status/{verification_id}:
+    get:
+      summary: Statut d'une vérification
+      operationId: getKYCStatus
+      tags: [KYC]
+      parameters:
+        - name: verification_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Résultat de la vérification
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationResult'
+        "404":
+          description: Vérification non trouvée
+
+  /kyc/countries:
+    get:
+      summary: Liste des pays supportés
+      operationId: listCountries
+      tags: [Reference]
+      security: []
+      responses:
+        "200":
+          description: Liste des pays africains
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Country'
+
+  /kyc/countries/{code}/doctypes:
+    get:
+      summary: Types de documents valides pour un pays
+      operationId: getDocTypes
+      tags: [Reference]
+      security: []
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 2
+          example: BF
+      responses:
+        "200":
+          description: Liste des doc_types valides
+        "404":
+          description: Pays non supporté

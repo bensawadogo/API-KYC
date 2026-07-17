@@ -1,0 +1,7 @@
+version: "3.9"
+
+services:
+  kyc-service:
+    environment:
+      TRACING_ENABLED:             "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: jaeger:4317

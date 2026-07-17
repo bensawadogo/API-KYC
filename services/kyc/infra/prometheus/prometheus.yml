@@ -1,0 +1,20 @@
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+  external_labels:
+    service: kyc-service
+    env:     development
+
+rule_files:
+  - "alerts.yml"
+
+scrape_configs:
+  - job_name: kyc-service
+    static_configs:
+      - targets: ["kyc-service:8081"]
+    metrics_path: /metrics
+    scrape_interval: 10s
+
+  - job_name: postgres-exporter
+    static_configs:
+      - targets: ["postgres:5432"]
