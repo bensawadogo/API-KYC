@@ -265,35 +265,40 @@ presets:[SwaggerUIBundle.presets.apis,SwaggerUIBundle.SwaggerUIStandalonePreset]
 		return nil
 	})
 
-	v1 := app.Group("/v1", middleware.RequireAPIKey(repo, ""))
-	kyc := v1.Group("/kyc")
-	idempotencyStore := middleware.NewIdempotencyStore(redisClient, zapLogger)
-	kyc.Post("/initiate",
-		middleware.RateLimitPerKey(redisClient),
-		idempotencyStore.Middleware,
-		middleware.RequireAPIKey(repo, model.ScopeKYCInitiate),
-		kycHandler.Initiate,
-	)
-	kyc.Get("/status/:verification_id",
-		middleware.RateLimitPerKey(redisClient),
-		middleware.RequireAPIKey(repo, model.ScopeKYCStatus),
-		kycHandler.GetStatus,
-	)
-	kyc.Get("/countries", kycHandler.ListCountries)
-	kyc.Get("/countries/:code/doctypes", kycHandler.ListDocTypes)
+	idmpStore := middleware.NewIdempotencyStore(redisClient, zapLogger)
 	smileAllowlist := middleware.NewIPAllowlist(cfg.Webhooks.SmileIDAllowedCIDRs, zapLogger)
 	sumsubAllowlist := middleware.NewIPAllowlist(cfg.Webhooks.SumSubAllowedCIDRs, zapLogger)
 
-	kyc.Post("/webhook/smileid",
-		smileAllowlist.Middleware,
-		middleware.RequireAPIKey(repo, model.ScopeKYCWebhook),
-		kycHandler.SmileIDWebhook,
-	)
-	kyc.Post("/webhook/sumsub",
-		sumsubAllowlist.Middleware,
-		middleware.RequireAPIKey(repo, model.ScopeKYCWebhook),
-		kycHandler.SumSubWebhook,
-	)
+	v1 := app.Group("/v1")
+	kyc := v1.Group("/kyc")
+
+	// Routes publiques (pas d'auth)
+	kyc.Get("/countries", kycHandler.ListCountries)
+	kyc.Get("/countries/:code/doctypes", kycHandler.ListDocTypes)
+
+	// /v1/kyc/initiate — rate limit + idempotence + auth scope
+	initiateGroup := kyc.Group("/initiate")
+	initiateGroup.Use(middleware.RequireAPIKey(repo, model.ScopeKYCInitiate))
+	initiateGroup.Use(middleware.RateLimitPerKey(redisClient))
+	initiateGroup.Use(idmpStore.Middleware)
+	initiateGroup.Post("", kycHandler.Initiate)
+
+	// /v1/kyc/status/:verification_id — rate limit + auth scope
+	statusGroup := kyc.Group("/status")
+	statusGroup.Use(middleware.RequireAPIKey(repo, model.ScopeKYCStatus))
+	statusGroup.Use(middleware.RateLimitPerKey(redisClient))
+	statusGroup.Get("/:verification_id", kycHandler.GetStatus)
+
+	// Webhooks — IP allowlist (pas d'API key)
+	webhookGroup := kyc.Group("/webhook")
+
+	smileGroup := webhookGroup.Group("/smileid")
+	smileGroup.Use(smileAllowlist.Middleware)
+	smileGroup.Post("", kycHandler.SmileIDWebhook)
+
+	sumsubGroup := webhookGroup.Group("/sumsub")
+	sumsubGroup.Use(sumsubAllowlist.Middleware)
+	sumsubGroup.Post("", kycHandler.SumSubWebhook)
 
 	go func() {
 		addr := fmt.Sprintf("0.0.0.0:%s", cfg.Server.Port)

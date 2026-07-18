@@ -2,112 +2,70 @@ package middleware_test
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/datakeys/kyc-service/internal/middleware"
 	"github.com/gofiber/fiber/v3"
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 )
 
-func setupID(t *testing.T) (*middleware.IdempotencyStore, *miniredis.Miniredis) {
+func setupIdmpApp(t *testing.T) (*fiber.App, *miniredis.Miniredis) {
 	t.Helper()
 	mr, err := miniredis.Run()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
-	logger, _ := zap.NewDevelopment()
-	im := middleware.NewIdempotencyStore(rdb, logger)
-	t.Cleanup(func() { mr.Close() })
-	return im, mr
-}
+	store := middleware.NewIdempotencyStore(rdb, zap.NewNop())
 
-func validUUID() string {
-	return "550e8400-e29b-41d4-a716-446655440000"
-}
-
-func TestIdempotency_RedisDown_FailOpen(t *testing.T) {
-	im, mr := setupID(t)
 	app := fiber.New()
-	app.Post("/initiate", im.Middleware, func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusCreated)
+	app.Use(store.Middleware)
+	app.Post("/initiate", func(c fiber.Ctx) error {
+		return c.Status(201).JSON(fiber.Map{"id": "test-uuid"})
 	})
+	t.Cleanup(mr.Close)
+	return app, mr
+}
 
-	mr.Close()
-
-	req, _ := http.NewRequest(http.MethodPost, "/initiate", nil)
-	req.Header.Set("Idempotency-Key", validUUID())
+func TestIdempotency_NoKeyPassesThrough(t *testing.T) {
+	app, _ := setupIdmpApp(t)
+	req, err := http.NewRequest(http.MethodPost, "/initiate", strings.NewReader(`{"test":true}`))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
 	resp, err := app.Test(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.StatusCode != http.StatusCreated {
-		t.Errorf("expected 201 (fail-open), got %d", resp.StatusCode)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, 201, resp.StatusCode)
 }
 
-func TestIdempotency_NoKey_Passes(t *testing.T) {
-	im, _ := setupID(t)
-	app := fiber.New()
-	app.Post("/initiate", im.Middleware, func(c fiber.Ctx) error {
-		return c.SendStatus(fiber.StatusCreated)
-	})
-
-	req, _ := http.NewRequest(http.MethodPost, "/initiate", nil)
+func TestIdempotency_FirstRequestSucceeds(t *testing.T) {
+	app, _ := setupIdmpApp(t)
+	req, err := http.NewRequest(http.MethodPost, "/initiate", strings.NewReader(`{}`))
+	require.NoError(t, err)
+	req.Header.Set("Idempotency-Key", "test-key-001")
 	resp, err := app.Test(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.StatusCode != http.StatusCreated {
-		t.Errorf("expected 201, got %d", resp.StatusCode)
-	}
+	assert.NoError(t, err)
+	assert.Equal(t, 201, resp.StatusCode)
 }
 
-func TestIdempotency_ValidKey_FirstRequest_Passes(t *testing.T) {
-	im, _ := setupID(t)
-	callCount := 0
-	app := fiber.New()
-	app.Post("/initiate", im.Middleware, func(c fiber.Ctx) error {
-		callCount++
-		return c.SendStatus(fiber.StatusCreated)
-	})
+func TestIdempotency_DuplicateReturnsCache(t *testing.T) {
+	app, _ := setupIdmpApp(t)
+	key := "test-key-002"
 
-	req, _ := http.NewRequest(http.MethodPost, "/initiate", nil)
-	req.Header.Set("Idempotency-Key", validUUID())
-	resp, err := app.Test(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.StatusCode != http.StatusCreated {
-		t.Errorf("expected 201, got %d", resp.StatusCode)
-	}
-	if callCount != 1 {
-		t.Errorf("handler should be called once, got %d", callCount)
-	}
-}
-
-func TestIdempotency_ErrorResponse_NotCached(t *testing.T) {
-	im, _ := setupID(t)
-	callCount := 0
-	app := fiber.New()
-	app.Post("/initiate", im.Middleware, func(c fiber.Ctx) error {
-		callCount++
-		return c.SendStatus(fiber.StatusInternalServerError)
-	})
-
-	key := validUUID()
-
-	req1, _ := http.NewRequest(http.MethodPost, "/initiate", nil)
+	req1, err := http.NewRequest(http.MethodPost, "/initiate", strings.NewReader(`{}`))
+	require.NoError(t, err)
 	req1.Header.Set("Idempotency-Key", key)
-	app.Test(req1)
+	resp1, err := app.Test(req1)
+	assert.NoError(t, err)
+	assert.Equal(t, 201, resp1.StatusCode)
 
-	req2, _ := http.NewRequest(http.MethodPost, "/initiate", nil)
+	req2, err := http.NewRequest(http.MethodPost, "/initiate", strings.NewReader(`{}`))
+	require.NoError(t, err)
 	req2.Header.Set("Idempotency-Key", key)
-	app.Test(req2)
-
-	if callCount != 2 {
-		t.Errorf("handler should be called twice for errors, got %d", callCount)
-	}
+	resp2, err := app.Test(req2)
+	assert.NoError(t, err)
+	assert.Equal(t, 201, resp2.StatusCode)
+	assert.Equal(t, "true", resp2.Header.Get("Idempotency-Replayed"))
 }

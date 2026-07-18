@@ -30,7 +30,11 @@ func (a *IPAllowlist) Middleware(c fiber.Ctx) error {
 		return c.Next()
 	}
 
-	clientIP := net.ParseIP(c.IP())
+	ipStr := c.IP()
+	if fwd := c.Get("X-Forwarded-For"); fwd != "" {
+		ipStr = fwd
+	}
+	clientIP := net.ParseIP(ipStr)
 	if clientIP == nil {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
 			"success":   false,

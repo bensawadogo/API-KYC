@@ -8,6 +8,7 @@ import (
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	"github.com/minio/minio-go/v7/pkg/sse"
 	"go.uber.org/zap"
 )
 
@@ -40,6 +41,12 @@ func NewMinIOStorage(endpoint, accessKey, secretKey, bucket string, useSSL bool,
 		}
 	}
 
+	if err := client.SetBucketEncryption(ctx, bucket, sse.NewConfigurationSSES3()); err != nil {
+		logger.Warn("bucket SSE-S3 encryption config failed — ensure MinIO has KMS/encryption enabled",
+			zap.String("bucket", bucket),
+			zap.Error(err))
+	}
+
 	return &MinIOStorage{
 		client: client,
 		bucket: bucket,
@@ -58,6 +65,7 @@ func (s *MinIOStorage) GenerateUploadURL(ctx context.Context, verificationID, do
 	_ = policy.SetContentLengthRange(1024, 10*1024*1024)
 	_ = policy.SetContentType("image/jpeg")
 	_ = policy.SetContentTypeStartsWith("image/")
+	policy.SetUserMetadata("x-amz-server-side-encryption", "AES256")
 
 	url, formData, err := s.client.PresignedPostPolicy(ctx, policy)
 	if err != nil {

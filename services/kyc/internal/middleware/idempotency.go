@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -34,7 +35,7 @@ func (s *IdempotencyStore) Middleware(c fiber.Ctx) error {
 	redisKey := fmt.Sprintf("idmp:%s:%s", clientID, key)
 
 	lockPayload := `{"status":"processing"}`
-	locked, err := s.redis.SetNX(c.Context(), redisKey, lockPayload, 30*time.Second).Result()
+	locked, err := s.redis.SetNX(context.Background(), redisKey, lockPayload, 30*time.Second).Result()
 	if err != nil {
 		s.logger.Warn("idempotency redis error, failing open",
 			zap.String("key", key), zap.Error(err))
@@ -42,12 +43,12 @@ func (s *IdempotencyStore) Middleware(c fiber.Ctx) error {
 	}
 
 	if !locked {
-		existing, err := s.redis.Get(c.Context(), redisKey).Result()
+		existing, err := s.redis.Get(context.Background(), redisKey).Result()
 		if err == nil {
 			var cached CachedResponse
 			if json.Unmarshal([]byte(existing), &cached) == nil && cached.StatusCode >= 200 {
-				c.Response().Header.Set("Idempotency-Replayed", "true")
-				c.Response().Header.Set("Idempotency-Key", key)
+			c.Set("Idempotency-Replayed", "true")
+			c.Set("Idempotency-Key", key)
 				return c.Status(cached.StatusCode).Send([]byte(cached.Body))
 			}
 		}
@@ -58,8 +59,8 @@ func (s *IdempotencyStore) Middleware(c fiber.Ctx) error {
 		})
 	}
 
-	c.Response().Header.Set("Idempotency-Key", key)
-	c.Response().Header.Set("Idempotent-Replayed", "false")
+	c.Set("Idempotency-Key", key)
+	c.Set("Idempotent-Replayed", "false")
 
 	err = c.Next()
 
@@ -70,11 +71,11 @@ func (s *IdempotencyStore) Middleware(c fiber.Ctx) error {
 			Body:       string(c.Response().Body()),
 		}
 		data, _ := json.Marshal(cachedResp)
-		if setErr := s.redis.Set(c.Context(), redisKey, string(data), 24*time.Hour).Err(); setErr != nil {
+		if setErr := s.redis.Set(context.Background(), redisKey, string(data), 24*time.Hour).Err(); setErr != nil {
 			s.logger.Warn("idempotency cache set failed", zap.Error(setErr))
 		}
 	} else {
-		s.redis.Del(c.Context(), redisKey)
+		s.redis.Del(context.Background(), redisKey)
 	}
 
 	return err

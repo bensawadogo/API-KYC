@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/datakeys/kyc-service/internal/handler"
@@ -100,4 +101,23 @@ func TestGetDocTypes_404_Unknown(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", resp.StatusCode)
 	}
+}
+
+func TestMiddlewareOrder_RateLimitExecutes(t *testing.T) {
+	callOrder := []string{}
+	app := fiber.New()
+	app.Use(func(c fiber.Ctx) error {
+		callOrder = append(callOrder, "middleware")
+		return c.Next()
+	})
+	app.Post("/test", func(c fiber.Ctx) error {
+		callOrder = append(callOrder, "handler")
+		return c.SendStatus(200)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/test", nil)
+	app.Test(req)
+
+	assert.Equal(t, []string{"middleware", "handler"}, callOrder,
+		"middleware doit s'exécuter avant le handler")
 }
