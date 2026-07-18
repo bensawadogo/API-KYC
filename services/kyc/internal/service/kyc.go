@@ -11,6 +11,7 @@ import (
 	"github.com/datakeys/kyc-service/internal"
 	"github.com/datakeys/kyc-service/internal/countries"
 	"github.com/datakeys/kyc-service/internal/model"
+	"github.com/datakeys/kyc-service/internal/notification"
 	"github.com/datakeys/kyc-service/internal/observability"
 	"github.com/datakeys/kyc-service/internal/resilience"
 	"github.com/google/uuid"
@@ -29,6 +30,7 @@ type KYCService struct {
 	aml       internal.AMLChecker
 	amlRepo   internal.AMLRepository
 	dlq       resilience.DLQInterface
+	notifier  *notification.Notifier
 }
 
 func NewKYCService(
@@ -43,6 +45,7 @@ func NewKYCService(
 	amlRepo internal.AMLRepository,
 	router *resilience.FallbackRouter,
 	dlq resilience.DLQInterface,
+	notifier *notification.Notifier,
 ) *KYCService {
 	return &KYCService{
 		repo:      repo,
@@ -56,6 +59,7 @@ func NewKYCService(
 		aml:       aml,
 		amlRepo:   amlRepo,
 		dlq:       dlq,
+		notifier:  notifier,
 	}
 }
 
@@ -145,6 +149,23 @@ func (s *KYCService) Initiate(ctx context.Context, req *model.InitiateKYCRequest
 					zap.Error(saveAMLErr),
 				)
 			}
+
+			if s.notifier != nil {
+				s.notifier.NotifyAsync(notification.Notification{
+					Event:          notification.EventKYCRejected,
+					VerificationID: verificationID,
+					Phone:          req.Phone,
+					CountryCode:    countryCode,
+					Status:         model.StatusRejected,
+					Message:        "Rejeté suite au screening AML (sanctions)",
+					Timestamp:      time.Now().UTC(),
+					Metadata: map[string]interface{}{
+						"aml_score": amlResult.Score,
+						"matches":   len(amlResult.Matches),
+					},
+				})
+			}
+
 			return &model.InitiateKYCResponse{
 				VerificationID: verificationID,
 				Status:         model.StatusRejected,
@@ -210,6 +231,21 @@ func (s *KYCService) Initiate(ctx context.Context, req *model.InitiateKYCRequest
 		zap.String("provider", providerName),
 		zap.Strings("flags", flags),
 	)
+
+	if s.notifier != nil {
+		s.notifier.NotifyAsync(notification.Notification{
+			Event:          notification.EventKYCInitiated,
+			VerificationID: verificationID,
+			Phone:          req.Phone,
+			CountryCode:    countryCode,
+			Status:         model.StatusPending,
+			Timestamp:      time.Now().UTC(),
+			Metadata: map[string]interface{}{
+				"provider": providerName,
+				"flags":    flags,
+			},
+		})
+	}
 
 	return &model.InitiateKYCResponse{
 		VerificationID: verificationID,
@@ -305,6 +341,33 @@ func (s *KYCService) Process(ctx context.Context, verificationID string) error {
 				zap.Error(err),
 			)
 		}
+	}
+
+	if s.notifier != nil {
+		notifEvent := notification.EventKYCApproved
+		notifMsg := "Vérification KYC approuvée"
+		switch status {
+		case model.StatusRejected:
+			notifEvent = notification.EventKYCRejected
+			notifMsg = "Vérification KYC rejetée"
+		case model.StatusManualReview:
+			notifEvent = notification.EventKYCPendingReview
+			notifMsg = "Vérification KYC en examen manuel"
+		}
+		s.notifier.NotifyAsync(notification.Notification{
+			Event:          notifEvent,
+			VerificationID: verificationID,
+			Phone:          verification.Phone,
+			CountryCode:    verification.CountryCode,
+			Status:         status,
+			Score:          result.Score,
+			Message:        notifMsg,
+			Timestamp:      time.Now().UTC(),
+			Metadata: map[string]interface{}{
+				"provider": usedProvider,
+				"flags":    flags,
+			},
+		})
 	}
 
 	if verification.CallbackURL != "" {

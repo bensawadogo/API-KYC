@@ -133,7 +133,7 @@ func setupService(t *testing.T) (*service.KYCService, *MockKYCRepository, *MockD
 	}
 
 	providers := map[string]internal.IdentityProvider{"smileid": provider}
-	svc := service.NewKYCService(repo, storage, providers, webhook, registry, cfg, logger, nil, nil, nil, nil)
+	svc := service.NewKYCService(repo, storage, providers, webhook, registry, cfg, logger, nil, nil, nil, nil, nil)
 	return svc, repo, storage, provider, webhook, registry
 }
 

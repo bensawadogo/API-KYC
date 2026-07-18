@@ -71,7 +71,7 @@ func TestGetStatus_Success(t *testing.T) {
 	repo := new(MockKYCRepository)
 	logger, _ := zap.NewDevelopment()
 	cfg := config.Config{KYC: config.KYCConfig{ScoreThreshold: 0.70}}
-	svc := NewKYCService(repo, nil, nil, nil, nil, cfg, logger, nil, nil, nil, nil)
+	svc := NewKYCService(repo, nil, nil, nil, nil, cfg, logger, nil, nil, nil, nil, nil)
 
 	expected := &model.VerificationResult{
 		VerificationID: "v1",
@@ -96,7 +96,7 @@ func TestSendWebhook_Success(t *testing.T) {
 	wh := new(MockWebhookSender)
 	logger, _ := zap.NewDevelopment()
 	cfg := config.Config{KYC: config.KYCConfig{ScoreThreshold: 0.70}}
-	svc := NewKYCService(repo, nil, nil, wh, nil, cfg, logger, nil, nil, nil, nil)
+	svc := NewKYCService(repo, nil, nil, wh, nil, cfg, logger, nil, nil, nil, nil, nil)
 
 	verification := &model.VerificationResult{
 		VerificationID: "v1",
@@ -118,7 +118,7 @@ func TestSendWebhook_RepoError(t *testing.T) {
 	wh := new(MockWebhookSender)
 	logger, _ := zap.NewDevelopment()
 	cfg := config.Config{KYC: config.KYCConfig{ScoreThreshold: 0.70}}
-	svc := NewKYCService(repo, nil, nil, wh, nil, cfg, logger, nil, nil, nil, nil)
+	svc := NewKYCService(repo, nil, nil, wh, nil, cfg, logger, nil, nil, nil, nil, nil)
 
 	repo.On("GetVerification", mock.Anything, "v1").Return((*model.VerificationResult)(nil), assert.AnError)
 
@@ -132,7 +132,7 @@ func TestSendWebhook_SendError(t *testing.T) {
 	wh := new(MockWebhookSender)
 	logger, _ := zap.NewDevelopment()
 	cfg := config.Config{KYC: config.KYCConfig{ScoreThreshold: 0.70}}
-	svc := NewKYCService(repo, nil, nil, wh, nil, cfg, logger, nil, nil, nil, nil)
+	svc := NewKYCService(repo, nil, nil, wh, nil, cfg, logger, nil, nil, nil, nil, nil)
 
 	verification := &model.VerificationResult{
 		VerificationID: "v1",
@@ -182,7 +182,7 @@ func TestSelectProvider_OnlyLocal(t *testing.T) {
 	localProvider.On("SupportedCountries").Return([]string{}).Maybe()
 
 	providers := map[string]internal.IdentityProvider{"local": localProvider}
-	svc := NewKYCService(repo, nil, providers, nil, nil, cfg, logger, nil, nil, nil, nil)
+	svc := NewKYCService(repo, nil, providers, nil, nil, cfg, logger, nil, nil, nil, nil, nil)
 
 	registry := new(MockCountryRegistry)
 	registry.On("GetProvider", "ZZ").Return("")
@@ -215,7 +215,7 @@ func TestSelectProvider_WithDefault(t *testing.T) {
 		"smileid":   smileidProvider,
 		"youverify": youverifyProvider,
 	}
-	svc := NewKYCService(repo, nil, providers, nil, nil, cfg, logger, nil, nil, nil, nil)
+	svc := NewKYCService(repo, nil, providers, nil, nil, cfg, logger, nil, nil, nil, nil, nil)
 
 	registry := new(MockCountryRegistry)
 	registry.On("GetProvider", "XX").Return("")
@@ -337,6 +337,6 @@ func setupService(t *testing.T) (*KYCService, *MockKYCRepository, *MockDocumentS
 		},
 	}
 	providers := map[string]internal.IdentityProvider{"smileid": prov}
-	svc := NewKYCService(repo, docStorage, providers, wh, reg, cfg, logger, nil, nil, nil, nil)
+	svc := NewKYCService(repo, docStorage, providers, wh, reg, cfg, logger, nil, nil, nil, nil, nil)
 	return svc, repo, docStorage, prov, wh, reg
 }

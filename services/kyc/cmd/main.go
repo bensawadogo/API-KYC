@@ -16,6 +16,7 @@ import (
 	"github.com/datakeys/kyc-service/internal/job"
 	"github.com/datakeys/kyc-service/internal/middleware"
 	"github.com/datakeys/kyc-service/internal/model"
+	"github.com/datakeys/kyc-service/internal/notification"
 	"github.com/datakeys/kyc-service/internal/observability"
 	"github.com/datakeys/kyc-service/internal/provider"
 	"github.com/datakeys/kyc-service/internal/registry"
@@ -161,6 +162,10 @@ func main() {
 		amlProvider = provider.NewLocalAMLProvider()
 	}
 
+	sseHub := notification.NewSSEHub()
+	smsChannel := notification.NewConsoleSMS(zapLogger)
+	notifier := notification.NewNotifier(sseHub, smsChannel)
+
 	kycService := service.NewKYCService(
 		repo,
 		docStorage,
@@ -173,6 +178,7 @@ func main() {
 		repo,
 		router,
 		dlq,
+		notifier,
 	)
 
 	cleanupJob := job.NewCleanupJob(
@@ -299,6 +305,10 @@ presets:[SwaggerUIBundle.presets.apis,SwaggerUIBundle.SwaggerUIStandalonePreset]
 	sumsubGroup := webhookGroup.Group("/sumsub")
 	sumsubGroup.Use(sumsubAllowlist.Middleware)
 	sumsubGroup.Post("", kycHandler.SumSubWebhook)
+
+	// SSE temps réel (pas d'auth — accessible au client via phone)
+	sseHandler := notification.NewSSEHandler(sseHub, zapLogger)
+	v1.Get("/notifications/stream", sseHandler.Stream)
 
 	go func() {
 		addr := fmt.Sprintf("0.0.0.0:%s", cfg.Server.Port)
