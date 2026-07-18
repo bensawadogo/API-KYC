@@ -11,6 +11,7 @@ import (
 
 	"github.com/datakeys/kyc-service/internal"
 	"github.com/datakeys/kyc-service/internal/model"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/jackc/pgx/v5/stdlib"
@@ -265,6 +266,22 @@ func (r *PostgresRepository) UpdateLastUsed(ctx context.Context, id string) erro
 	if err != nil {
 		return fmt.Errorf("update last used: %w", err)
 	}
+	return nil
+}
+
+func (r *PostgresRepository) CreateAPIKey(ctx context.Context, key *model.APIKey) error {
+	id := key.ID
+	if id == "" {
+		id = uuid.New().String()
+	}
+	_, err := r.pool.Exec(ctx, `
+		INSERT INTO api_keys (id, client_name, key_hash, key_prefix, scopes, rate_limit, is_active)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, id, key.ClientName, key.KeyHash, key.KeyPrefix, key.Scopes, key.RateLimit, key.IsActive)
+	if err != nil {
+		return fmt.Errorf("insert api key: %w", err)
+	}
+	key.ID = id
 	return nil
 }
 
