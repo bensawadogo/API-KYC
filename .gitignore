@@ -1,0 +1,93 @@
+# ═══════════════════════════════════════
+# SECRETS — JAMAIS SUR GITHUB
+# ═══════════════════════════════════════
+.env
+.env.*
+!.env.example
+*.env
+secrets/
+vault/
+credentials/
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+
+# Fichiers de config avec vraies valeurs
+config.yaml
+config.prod.yaml
+config.local.yaml
+!config.example.yaml
+
+# ═══════════════════════════════════════
+# GO
+# ═══════════════════════════════════════
+# Binaires compilés
+services/kyc/kyc-service
+services/kyc/kyc-service.exe
+services/*/bin/
+dist/
+build/
+
+# Coverage et profiling
+*.out
+*.test
+coverage.html
+cpu.prof
+mem.prof
+
+# ═══════════════════════════════════════
+# DOCKER
+# ═══════════════════════════════════════
+docker/volumes/
+postgres_data/
+minio_data/
+grafana_data/
+prometheus_data/
+
+# ═══════════════════════════════════════
+# SDKs
+# ═══════════════════════════════════════
+sdks/javascript/node_modules/
+sdks/javascript/dist/
+sdks/react-widget/node_modules/
+sdks/react-widget/dist/
+sdks/python/__pycache__/
+sdks/python/*.egg-info/
+sdks/python/dist/
+sdks/python/build/
+sdks/go/vendor/
+
+# ═══════════════════════════════════════
+# IDE et OS
+# ═══════════════════════════════════════
+.idea/
+.vscode/settings.json
+!.vscode/extensions.json
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+*.err
+logs/
+
+# Binaires compilés (générique)
+*.exe
+!sdks/**/*.exe
+
+# Node modules (root)
+node_modules/
+
+# Fichiers temporaires
+test-api.ps1
+
+# Rapports d'audit
+audit_test_results.txt
+coverage.out

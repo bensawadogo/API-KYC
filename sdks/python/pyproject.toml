@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "datakeys-kyc"
+version = "1.0.0"
+description = "SDK officiel DATAKEYS KYC — vérification identité panafricaine"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+keywords = ["kyc", "identity", "africa", "bceao", "burkina", "nigeria", "kenya"]
+
+[project.urls]
+Homepage = "https://datakeys.africa"
+Documentation = "https://docs.datakeys.africa"
+Repository = "https://github.com/datakeys/kyc-python"
+Issues = "https://github.com/datakeys/kyc-python/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["datakeys"]

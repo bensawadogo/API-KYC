@@ -1,0 +1,16 @@
+# Binaire compilé
+kyc-service
+kyc-service.exe
+
+# Secrets locaux
+.env
+.env.local
+.env.production
+!.env.example
+
+# Tests
+coverage.out
+*.test
+
+# Migration lock files locaux
+*.lock

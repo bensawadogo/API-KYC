@@ -1,0 +1,30 @@
+# JavaScript
+javascript/node_modules/
+javascript/dist/
+javascript/coverage/
+react-widget/node_modules/
+react-widget/dist/
+react-widget/coverage/
+javascript/.env
+
+# Python
+python/__pycache__/
+python/**/__pycache__/
+python/*.egg-info/
+python/dist/
+python/build/
+python/.env
+python/venv/
+python/.venv/
+python/*.pyc
+
+# Coverage
+**/coverage/
+**/lcov-report/
+**/lcov.info
+**/clover.xml
+**/coverage-final.json
+
+# Go
+go/vendor/
+go/.env

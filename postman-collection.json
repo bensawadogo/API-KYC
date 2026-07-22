@@ -1,0 +1,110 @@
+{
+  "info": {
+    "name": "DATAKEYS KYC API",
+    "description": "Collection pour tester l'API KYC en local",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8081" },
+    { "key": "api_key", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health Ready",
+      "request": {
+        "url": "{{base_url}}/health/ready",
+        "method": "GET"
+      }
+    },
+    {
+      "name": "Liste des pays",
+      "request": {
+        "url": "{{base_url}}/v1/kyc/countries",
+        "method": "GET"
+      }
+    },
+    {
+      "name": "Types documents Burkina",
+      "request": {
+        "url": "{{base_url}}/v1/kyc/countries/BF/doctypes",
+        "method": "GET"
+      }
+    },
+    {
+      "name": "Initier vérification BF (approuvé)",
+      "request": {
+        "url": "{{base_url}}/v1/kyc/initiate",
+        "method": "POST",
+        "header": [
+          { "key": "X-API-Key", "value": "{{api_key}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"phone\":\"+22670000001\",\"country_code\":\"BF\",\"doc_type\":\"NATIONAL_ID\",\"doc_number\":\"B1230000\",\"full_name\":\"Aminata Ouédraogo\",\"consent\":true}"
+        }
+      }
+    },
+    {
+      "name": "Initier vérification NG (approuvé)",
+      "request": {
+        "url": "{{base_url}}/v1/kyc/initiate",
+        "method": "POST",
+        "header": [
+          { "key": "X-API-Key", "value": "{{api_key}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"phone\":\"+2348100000001\",\"country_code\":\"NG\",\"doc_type\":\"NATIONAL_ID\",\"doc_number\":\"12345670000\",\"full_name\":\"Chukwuemeka Okafor\",\"consent\":true}"
+        }
+      }
+    },
+    {
+      "name": "Initier vérification GH (rejeté)",
+      "request": {
+        "url": "{{base_url}}/v1/kyc/initiate",
+        "method": "POST",
+        "header": [
+          { "key": "X-API-Key", "value": "{{api_key}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"phone\":\"+233200001111\",\"country_code\":\"GH\",\"doc_type\":\"NATIONAL_ID\",\"doc_number\":\"GHA-1111111-1\",\"full_name\":\"Kwame Asare\",\"consent\":true}"
+        }
+      }
+    },
+    {
+      "name": "Status (remplacer ID)",
+      "request": {
+        "url": "{{base_url}}/v1/kyc/status/ID_RECU",
+        "method": "GET",
+        "header": [
+          { "key": "X-API-Key", "value": "{{api_key}}" }
+        ]
+      }
+    },
+    {
+      "name": "Sans clé → 401 attendu",
+      "request": {
+        "url": "{{base_url}}/v1/kyc/initiate",
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"phone\":\"+22670000001\",\"country_code\":\"BF\",\"doc_type\":\"NATIONAL_ID\",\"doc_number\":\"B1230000\",\"full_name\":\"Aminata Ouédraogo\",\"consent\":true}"
+        }
+      }
+    },
+    {
+      "name": "Metrics (sans clé admin → 401)",
+      "request": {
+        "url": "{{base_url}}/metrics",
+        "method": "GET"
+      }
+    }
+  ]
+}
